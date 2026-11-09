@@ -1,0 +1,30 @@
+name: Static page boundary
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Reject unexpected files and validate links
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import subprocess
+          from html.parser import HTMLParser
+          allowed = {'index.html', 'privacy.html', 'terms.html', 'README.md', 'AGENTS.md', '.nojekyll', '.github/workflows/static-pages.yml'}
+          actual = set(subprocess.check_output(['git', 'ls-files', '-z']).decode().strip('\0').split('\0'))
+          assert actual == allowed, 'Unexpected or missing public files'
+          class Links(HTMLParser):
+              def handle_starttag(self, tag, attrs):
+                  for key, value in attrs:
+                      if key in ('href', 'src'):
+                          assert value in ('privacy.html', 'terms.html'), 'Unexpected external resource'
+          for name in ('index.html', 'privacy.html', 'terms.html'):
+              p = Path(name)
+              assert not p.is_symlink()
+              Links().feed(p.read_text())
+          PYTHON
